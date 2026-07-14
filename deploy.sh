@@ -25,6 +25,10 @@ CONFIG_FILE="/etc/stone/config.yaml"
 SERVICE_FILE="/etc/systemd/system/stone.service"
 LOG_DIR="/var/log/stone"
 DATA_DIR="/var/lib/stone"
+GO_BIN="/usr/local/go/bin"
+
+# 确保 Go 在 PATH 中
+export PATH=$PATH:$GO_BIN
 
 # 检查 root 权限
 if [ "$EUID" -ne 0 ]; then
@@ -53,7 +57,7 @@ if ! command -v git &> /dev/null; then
 fi
 
 # 检查 Go
-if ! command -v go &> /dev/null; then
+if ! command -v go &> /dev/null && [ ! -f "$GO_BIN/go" ]; then
     log_warn "Go 未安装，正在安装..."
     
     # 检测架构
@@ -75,12 +79,15 @@ if ! command -v go &> /dev/null; then
     rm -rf /usr/local/go
     tar -C /usr/local -xzf go.tar.gz
     rm go.tar.gz
-    export PATH=$PATH:/usr/local/go/bin
     
-    # 添加到 PATH
-    echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile.d/go.sh
+    # 添加到 PATH（永久生效）
+    if ! grep -q "/usr/local/go/bin" /etc/profile.d/go.sh 2>/dev/null; then
+        echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/go.sh
+    fi
     
     log_info "Go ${GO_VERSION} 安装完成"
+else
+    log_info "Go 已安装: $(go version 2>/dev/null || $GO_BIN/go version 2>/dev/null)"
 fi
 
 # 2. 克隆代码
@@ -91,15 +98,14 @@ git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
 # 3. 编译
 log_info "编译中..."
 cd "$INSTALL_DIR"
-export PATH=$PATH:/usr/local/go/bin
 
 # 获取版本
 VERSION=$(grep -oP 'Version\s*=\s*"\K[^"]+' main.go 2>/dev/null || echo "v0.6.2")
 
 # 下载依赖
-go mod tidy
+$GO_BIN/go mod tidy
 
-CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=${VERSION}" -o stone
+CGO_ENABLED=0 $GO_BIN/go build -ldflags="-s -w -X main.Version=${VERSION}" -o stone
 
 if [ ! -f stone ]; then
     log_error "编译失败"
