@@ -97,8 +97,6 @@ func (c *Command) Handle(message *TelegramMessage) {
 		c.handleNetwork()
 	case "/disk":
 		c.handleDisk()
-	case "/servers":
-		c.handleServers()
 	case "/service":
 		if len(args) < 3 {
 			c.telegram.SendMessage("用法: /service <服务名> <动作>\n动作: restart, start, stop, status")
