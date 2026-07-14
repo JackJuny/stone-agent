@@ -219,10 +219,31 @@ func (s *Scheduler) checkServices() {
 
 // isServiceInstalled 检查服务是否安装
 func (s *Scheduler) isServiceInstalled(service string) bool {
+	// 方法1: 检查 unit-files
 	cmd := exec.Command("systemctl", "list-unit-files", service+".service")
 	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return false
+	if err == nil && strings.Contains(string(output), service+".service") {
+		return true
 	}
-	return strings.Contains(string(output), service+".service")
+
+	// 方法2: 检查运行中的 unit
+	cmd = exec.Command("systemctl", "list-units", "--type=service", "--all")
+	output, err = cmd.CombinedOutput()
+	if err == nil && strings.Contains(string(output), service+".service") {
+		return true
+	}
+
+	// 方法3: 检查服务文件是否存在
+	paths := []string{
+		"/etc/systemd/system/" + service + ".service",
+		"/usr/lib/systemd/system/" + service + ".service",
+		"/lib/systemd/system/" + service + ".service",
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+	}
+
+	return false
 }
