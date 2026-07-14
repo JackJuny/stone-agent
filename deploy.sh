@@ -56,6 +56,23 @@ if ! command -v git &> /dev/null; then
     fi
 fi
 
+# 安装字体库（支持 emoji 显示）
+log_info "检查字体库..."
+if command -v apt-get &> /dev/null; then
+    # Debian/Ubuntu
+    if ! dpkg -l | grep -q fonts-noto-color-emoji 2>/dev/null; then
+        log_info "安装 emoji 字体..."
+        apt-get install -y -qq fonts-noto-color-emoji fonts-noto-cjk 2>/dev/null || true
+    fi
+elif command -v yum &> /dev/null; then
+    # CentOS/RHEL
+    if ! rpm -q google-noto-emoji-color-fonts 2>/dev/null; then
+        log_info "安装 emoji 字体..."
+        yum install -y -q google-noto-emoji-color-fonts google-noto-sans-cjk-fonts 2>/dev/null || true
+    fi
+fi
+log_info "字体库检查完成"
+
 # 检查 Go
 if ! command -v go &> /dev/null && [ ! -f "$GO_BIN/go" ]; then
     log_warn "Go 未安装，正在安装..."
