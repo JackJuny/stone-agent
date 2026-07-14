@@ -97,10 +97,8 @@ func (c *Command) Handle(message *TelegramMessage) {
 		c.handleNetwork()
 	case "/disk":
 		c.handleDisk()
-	case "/restart":
-		c.handleRestartAgent()
-	case "/reboot":
-		c.handleReboot()
+	case "/servers":
+		c.handleServers()
 	case "/service":
 		if len(args) < 3 {
 			c.telegram.SendMessage("用法: /service <服务名> <动作>\n动作: restart, start, stop, status")
@@ -108,7 +106,7 @@ func (c *Command) Handle(message *TelegramMessage) {
 		}
 		c.handleServiceControl(args[1], args[2])
 	default:
-		c.telegram.SendMessage("未知命令。\n\n可用命令:\n/status 状态\n/health 健康\n/security 安全\n/info 信息\n/network 网络\n/disk 磁盘\n/services 服务\n/plugins 插件\n/logs 日志\n/report 日报\n/service <名> <动作>\n/restart 重启Agent\n/reboot 重启服务器")
+		c.telegram.SendMessage("未知命令。\n\n可用命令:\n/status 状态\n/health 健康\n/security 安全\n/info 信息\n/network 网络\n/disk 磁盘\n/services 服务\n/plugins 插件\n/logs 日志\n/report 日报\n/servers 服务器列表\n/service <名> <动作>\n\n⚠️ /restart /reboot 已禁用\n请使用 /servers 选择服务器操作")
 	}
 }
 
