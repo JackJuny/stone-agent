@@ -96,6 +96,9 @@ export PATH=$PATH:/usr/local/go/bin
 # 获取版本
 VERSION=$(grep -oP 'Version\s*=\s*"\K[^"]+' main.go 2>/dev/null || echo "v0.6.2")
 
+# 下载依赖
+go mod tidy
+
 CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=${VERSION}" -o stone
 
 if [ ! -f stone ]; then
