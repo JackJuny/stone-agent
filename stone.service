@@ -1,0 +1,14 @@
+[Unit]
+Description=Stone Agent - Personal VPS Operations Assistant
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/stone
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+MemoryLimit=50M
+
+[Install]
+WantedBy=multi-user.target
