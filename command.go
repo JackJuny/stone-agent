@@ -520,22 +520,36 @@ func (c *Command) HandleCallbackQuery(query *CallbackQuery) {
 		return
 	}
 
-	switch data {
-	case "confirm_restart":
+	switch {
+	case data == "confirm_restart":
 		c.executeConfirmRestart(query)
-	case "cancel_restart":
+	case strings.HasPrefix(data, "confirm_restart:"):
+		serverID := strings.TrimPrefix(data, "confirm_restart:")
+		if serverID == c.config.Server.ServerID {
+			c.executeConfirmRestart(query)
+		} else {
+			c.telegram.AnswerCallbackQuery(query.ID, "此操作需要在对应服务器上执行")
+		}
+	case data == "cancel_restart":
 		c.telegram.AnswerCallbackQuery(query.ID, "已取消")
 		if query.Message != nil {
 			c.telegram.EditMessage(query.Message.Chat.ID, int64(query.Message.MessageID), "❌ 操作已取消")
 		}
-	case "confirm_reboot":
+	case data == "confirm_reboot":
 		c.executeConfirmReboot(query)
-	case "cancel_reboot":
+	case strings.HasPrefix(data, "confirm_reboot:"):
+		serverID := strings.TrimPrefix(data, "confirm_reboot:")
+		if serverID == c.config.Server.ServerID {
+			c.executeConfirmReboot(query)
+		} else {
+			c.telegram.AnswerCallbackQuery(query.ID, "此操作需要在对应服务器上执行")
+		}
+	case data == "cancel_reboot":
 		c.telegram.AnswerCallbackQuery(query.ID, "已取消")
 		if query.Message != nil {
 			c.telegram.EditMessage(query.Message.Chat.ID, int64(query.Message.MessageID), "❌ 操作已取消")
 		}
-	case "back_main":
+	case data == "back_main":
 		c.handleServers()
 	default:
 		c.telegram.AnswerCallbackQuery(query.ID, "操作已处理")
@@ -740,10 +754,10 @@ func (c *Command) handleSystemPage(query *CallbackQuery, serverID string) {
 	keyboardMsg := &InlineKeyboard{
 		InlineKeyboard: [][]InlineKeyboardButton{
 			{
-				{Text: "🔄 重启Stone Agent", CallbackData: "confirm_restart"},
+				{Text: "🔄 重启Stone Agent", CallbackData: fmt.Sprintf("confirm_restart:%s", serverID)},
 			},
 			{
-				{Text: "🔄 重启服务器", CallbackData: "confirm_reboot"},
+				{Text: "🔄 重启服务器", CallbackData: fmt.Sprintf("confirm_reboot:%s", serverID)},
 			},
 			{
 				{Text: "🔙 返回", CallbackData: fmt.Sprintf("server:%s", serverID)},
