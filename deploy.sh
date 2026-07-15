@@ -112,24 +112,38 @@ log_info "拉取代码..."
 rm -rf "$INSTALL_DIR"
 git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
 
-# 3. 编译
-log_info "编译中..."
+# 3. 下载预编译二进制
+log_info "下载 Stone Agent..."
+
+VERSION="v0.6.2"
+DOWNLOAD_URL="https://github.com/JackJuny/stone-agent/releases/download/${VERSION}/stone-linux-amd64"
+
 cd "$INSTALL_DIR"
 
-# 获取版本
-VERSION=$(grep -oP 'Version\s*=\s*"\K[^"]+' main.go 2>/dev/null || echo "v0.6.2")
-
-# 下载依赖
-$GO_BIN/go mod tidy
-
-CGO_ENABLED=0 $GO_BIN/go build -ldflags="-s -w -X main.Version=${VERSION}" -o stone
-
-if [ ! -f stone ]; then
-    log_error "编译失败"
-    exit 1
+# 尝试下载预编译二进制
+if wget -q "$DOWNLOAD_URL" -O stone 2>/dev/null; then
+    chmod +x stone
+    log_info "下载完成: $(ls -lh stone | awk '{print $5}')"
+else
+    log_warn "下载失败，尝试编译..."
+    
+    # 检查 Go
+    if ! command -v go &> /dev/null && [ ! -f "$GO_BIN/go" ]; then
+        log_error "Go 未安装，无法编译"
+        exit 1
+    fi
+    
+    # 编译
+    $GO_BIN/go mod tidy
+    CGO_ENABLED=0 $GO_BIN/go build -ldflags="-s -w -X main.Version=${VERSION}" -o stone
+    
+    if [ ! -f stone ]; then
+        log_error "编译失败"
+        exit 1
+    fi
 fi
 
-log_info "编译完成: $(ls -lh stone | awk '{print $5}')"
+log_info "准备完成: $(ls -lh stone | awk '{print $5}')"
 
 # 4. 停止旧服务
 if systemctl is-active --quiet stone 2>/dev/null; then
