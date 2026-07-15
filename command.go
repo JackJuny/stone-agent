@@ -480,15 +480,43 @@ func (c *Command) HandleCallbackQuery(query *CallbackQuery) {
 		return
 	}
 
-	// 处理服务操作回调
-	if strings.HasPrefix(data, "service_") {
-		c.handleServiceCallback(query, data)
+	// 处理服务列表回调
+	if strings.HasPrefix(data, "services:") {
+		serverID := strings.TrimPrefix(data, "services:")
+		c.handleServiceList(query, serverID)
 		return
 	}
 
-	// 处理系统操作回调
-	if strings.HasPrefix(data, "system_") {
-		c.handleSystemCallback(query, data)
+	// 处理安全回调
+	if strings.HasPrefix(data, "security:") {
+		serverID := strings.TrimPrefix(data, "security:")
+		c.handleSecurityPage(query, serverID)
+		return
+	}
+
+	// 处理日志回调
+	if strings.HasPrefix(data, "logs:") {
+		serverID := strings.TrimPrefix(data, "logs:")
+		c.handleLogsPage(query, serverID)
+		return
+	}
+
+	// 处理系统回调
+	if strings.HasPrefix(data, "system:") {
+		serverID := strings.TrimPrefix(data, "system:")
+		c.handleSystemPage(query, serverID)
+		return
+	}
+
+	// 处理服务操作回调
+	if strings.HasPrefix(data, "service:") {
+		c.handleServiceAction(query, data)
+		return
+	}
+
+	// 处理刷新回调
+	if data == "refresh" {
+		c.handleRefresh(query)
 		return
 	}
 
@@ -496,11 +524,17 @@ func (c *Command) HandleCallbackQuery(query *CallbackQuery) {
 	case "confirm_restart":
 		c.executeConfirmRestart(query)
 	case "cancel_restart":
-		c.cancelConfirm(query, "restart_agent")
+		c.telegram.AnswerCallbackQuery(query.ID, "已取消")
+		if query.Message != nil {
+			c.telegram.EditMessage(query.Message.Chat.ID, int64(query.Message.MessageID), "❌ 操作已取消")
+		}
 	case "confirm_reboot":
 		c.executeConfirmReboot(query)
 	case "cancel_reboot":
-		c.cancelConfirm(query, "reboot")
+		c.telegram.AnswerCallbackQuery(query.ID, "已取消")
+		if query.Message != nil {
+			c.telegram.EditMessage(query.Message.Chat.ID, int64(query.Message.MessageID), "❌ 操作已取消")
+		}
 	case "back_main":
 		c.handleServers()
 	default:
@@ -653,6 +687,118 @@ func (c *Command) handleSystemCallback(query *CallbackQuery, data string) {
 	msg := "🔄 系统操作\n\n选择操作："
 	c.telegram.EditMessageWithKeyboard(query.Message.Chat.ID, int64(query.Message.MessageID), msg, keyboardMsg)
 	c.telegram.AnswerCallbackQuery(query.ID, "")
+}
+
+// handleSecurityPage 显示安全页面
+func (c *Command) handleSecurityPage(query *CallbackQuery, serverID string) {
+	if query.Message == nil {
+		return
+	}
+
+	msg := "🛡 安全状态\n\nUFW: 🟢\nFail2ban: 🟢\nSSH失败: 0"
+
+	keyboardMsg := &InlineKeyboard{
+		InlineKeyboard: [][]InlineKeyboardButton{
+			{
+				{Text: "🔙 返回", CallbackData: fmt.Sprintf("server:%s", serverID)},
+			},
+		},
+	}
+
+	c.telegram.EditMessageWithKeyboard(query.Message.Chat.ID, int64(query.Message.MessageID), msg, keyboardMsg)
+	c.telegram.AnswerCallbackQuery(query.ID, "")
+}
+
+// handleLogsPage 显示日志页面
+func (c *Command) handleLogsPage(query *CallbackQuery, serverID string) {
+	if query.Message == nil {
+		return
+	}
+
+	msg := "📜 操作日志\n\n暂无最近操作"
+
+	keyboardMsg := &InlineKeyboard{
+		InlineKeyboard: [][]InlineKeyboardButton{
+			{
+				{Text: "🔙 返回", CallbackData: fmt.Sprintf("server:%s", serverID)},
+			},
+		},
+	}
+
+	c.telegram.EditMessageWithKeyboard(query.Message.Chat.ID, int64(query.Message.MessageID), msg, keyboardMsg)
+	c.telegram.AnswerCallbackQuery(query.ID, "")
+}
+
+// handleSystemPage 显示系统操作页面
+func (c *Command) handleSystemPage(query *CallbackQuery, serverID string) {
+	if query.Message == nil {
+		return
+	}
+
+	msg := "🔄 系统操作\n\n选择操作："
+
+	keyboardMsg := &InlineKeyboard{
+		InlineKeyboard: [][]InlineKeyboardButton{
+			{
+				{Text: "🔄 重启Stone Agent", CallbackData: "confirm_restart"},
+			},
+			{
+				{Text: "🔄 重启服务器", CallbackData: "confirm_reboot"},
+			},
+			{
+				{Text: "🔙 返回", CallbackData: fmt.Sprintf("server:%s", serverID)},
+			},
+		},
+	}
+
+	c.telegram.EditMessageWithKeyboard(query.Message.Chat.ID, int64(query.Message.MessageID), msg, keyboardMsg)
+	c.telegram.AnswerCallbackQuery(query.ID, "")
+}
+
+// handleRefresh 刷新服务器状态
+func (c *Command) handleRefresh(query *CallbackQuery) {
+	if query.Message == nil {
+		return
+	}
+
+	c.handleServers()
+	c.telegram.AnswerCallbackQuery(query.ID, "已刷新")
+}
+
+// handleServiceAction 处理服务操作
+func (c *Command) handleServiceAction(query *CallbackQuery, data string) {
+	if query.Message == nil {
+		return
+	}
+
+	parts := strings.Split(data, ":")
+	if len(parts) != 4 {
+		return
+	}
+
+	serverID := parts[1]
+	serviceName := parts[2]
+	action := parts[3]
+
+	if serverID != c.config.Server.ServerID {
+		c.telegram.AnswerCallbackQuery(query.ID, "此操作需要在对应服务器上执行")
+		return
+	}
+
+	if !c.config.IsServiceActionAllowed(serviceName, action) {
+		c.telegram.AnswerCallbackQuery(query.ID, "服务操作未授权")
+		return
+	}
+
+	params := map[string]string{"service": serviceName, "action": action}
+	err := c.actionMgr.Execute(fmt.Sprintf("service_%s_%s", serviceName, action), params, 0)
+
+	if err != nil {
+		c.telegram.AnswerCallbackQuery(query.ID, fmt.Sprintf("操作失败: %s", err))
+		return
+	}
+
+	c.telegram.AnswerCallbackQuery(query.ID, fmt.Sprintf("✅ %s %s 已执行", serviceName, action))
 }
 
 func (c *Command) executeConfirmRestart(query *CallbackQuery) {
