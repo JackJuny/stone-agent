@@ -473,6 +473,25 @@ func (c *Command) HandleCallbackQuery(query *CallbackQuery) {
 		return
 	}
 
+	// 处理服务器选择回调
+	if strings.HasPrefix(data, "server:") {
+		serverID := strings.TrimPrefix(data, "server:")
+		c.handleServerSelect(query, serverID)
+		return
+	}
+
+	// 处理服务操作回调
+	if strings.HasPrefix(data, "service_") {
+		c.handleServiceCallback(query, data)
+		return
+	}
+
+	// 处理系统操作回调
+	if strings.HasPrefix(data, "system_") {
+		c.handleSystemCallback(query, data)
+		return
+	}
+
 	switch data {
 	case "confirm_restart":
 		c.executeConfirmRestart(query)
@@ -482,9 +501,158 @@ func (c *Command) HandleCallbackQuery(query *CallbackQuery) {
 		c.executeConfirmReboot(query)
 	case "cancel_reboot":
 		c.cancelConfirm(query, "reboot")
+	case "back_main":
+		c.handleServers()
 	default:
-		c.telegram.AnswerCallbackQuery(query.ID, "Unknown action")
+		c.telegram.AnswerCallbackQuery(query.ID, "操作已处理")
 	}
+}
+
+// handleServerSelect 处理服务器选择
+func (c *Command) handleServerSelect(query *CallbackQuery, serverID string) {
+	if query.Message == nil {
+		return
+	}
+
+	// 显示服务器状态页面
+	keyboardMsg := &InlineKeyboard{
+		InlineKeyboard: [][]InlineKeyboardButton{
+			{
+				{Text: "📊 刷新", CallbackData: fmt.Sprintf("server:%s", serverID)},
+				{Text: "⚙️ 服务", CallbackData: fmt.Sprintf("services:%s", serverID)},
+			},
+			{
+				{Text: "🛡 安全", CallbackData: fmt.Sprintf("security:%s", serverID)},
+				{Text: "📜 日志", CallbackData: fmt.Sprintf("logs:%s", serverID)},
+			},
+			{
+				{Text: "🔄 系统", CallbackData: fmt.Sprintf("system:%s", serverID)},
+			},
+			{
+				{Text: "🔙 返回", CallbackData: "back_main"},
+			},
+		},
+	}
+
+	// 获取当前服务器状态
+	status, _ := monitor.Collect(c.config.GetNetworkIF())
+	msg := fmt.Sprintf("🪨 %s\n\n🟢 Online\n\n📊 CPU %d%% | RAM %d%%\n💾 Disk %d%%\n🌐 ↓%s ↑%s\n\nVersion: %s",
+		c.config.Server.Name,
+		int(status.CPU),
+		int(status.MemoryPercent),
+		int(status.DiskPercent),
+		monitor.FormatBytesUint64(status.NetRX),
+		monitor.FormatBytesUint64(status.NetTX),
+		Version,
+	)
+
+	c.telegram.EditMessageWithKeyboard(query.Message.Chat.ID, int64(query.Message.MessageID), msg, keyboardMsg)
+	c.telegram.AnswerCallbackQuery(query.ID, "")
+}
+
+// handleServiceCallback 处理服务回调
+func (c *Command) handleServiceCallback(query *CallbackQuery, data string) {
+	if query.Message == nil {
+		return
+	}
+
+	// 解析: services:serverID 或 service:serverID:serviceName:action
+	parts := strings.Split(data, ":")
+
+	if len(parts) == 2 && parts[0] == "services" {
+		// 显示服务列表
+		c.handleServiceList(query, parts[1])
+		return
+	}
+
+	if len(parts) == 4 && parts[0] == "service" {
+		// 处理服务操作
+		serviceName := parts[2]
+		action := parts[3]
+
+		// 检查是否是当前服务器
+		if parts[1] != c.config.Server.ServerID {
+			c.telegram.AnswerCallbackQuery(query.ID, "此操作需要在对应服务器上执行")
+			return
+		}
+
+		// 检查权限
+		if !c.config.IsServiceActionAllowed(serviceName, action) {
+			c.telegram.AnswerCallbackQuery(query.ID, "服务操作未授权")
+			return
+		}
+
+		// 执行操作
+		params := map[string]string{"service": serviceName, "action": action}
+		err := c.actionMgr.Execute(fmt.Sprintf("service_%s_%s", serviceName, action), params, 0)
+
+		if err != nil {
+			c.telegram.AnswerCallbackQuery(query.ID, fmt.Sprintf("操作失败: %s", err))
+			return
+		}
+
+		c.telegram.AnswerCallbackQuery(query.ID, fmt.Sprintf("✅ %s %s 已执行", serviceName, action))
+	}
+}
+
+// handleServiceList 显示服务列表
+func (c *Command) handleServiceList(query *CallbackQuery, serverID string) {
+	if query.Message == nil {
+		return
+	}
+
+	services := c.config.Services
+	keyboardMsg := &InlineKeyboard{
+		InlineKeyboard: [][]InlineKeyboardButton{},
+	}
+
+	for _, svc := range services {
+		keyboardMsg.InlineKeyboard = append(keyboardMsg.InlineKeyboard, []InlineKeyboardButton{
+			{Text: svc, CallbackData: fmt.Sprintf("service:%s:%s:status", serverID, svc)},
+		})
+	}
+
+	// 添加返回按钮
+	keyboardMsg.InlineKeyboard = append(keyboardMsg.InlineKeyboard, []InlineKeyboardButton{
+		{Text: "🔙 返回", CallbackData: fmt.Sprintf("server:%s", serverID)},
+	})
+
+	msg := "⚙️ 服务管理\n\n选择服务查看详情"
+	c.telegram.EditMessageWithKeyboard(query.Message.Chat.ID, int64(query.Message.MessageID), msg, keyboardMsg)
+	c.telegram.AnswerCallbackQuery(query.ID, "")
+}
+
+// handleSystemCallback 处理系统回调
+func (c *Command) handleSystemCallback(query *CallbackQuery, data string) {
+	if query.Message == nil {
+		return
+	}
+
+	parts := strings.Split(data, ":")
+	if len(parts) < 2 {
+		return
+	}
+
+	serverID := parts[1]
+
+	// 显示系统操作选项
+	keyboardMsg := &InlineKeyboard{
+		InlineKeyboard: [][]InlineKeyboardButton{
+			{
+				{Text: "🔄 重启Stone Agent", CallbackData: fmt.Sprintf("confirm_restart")},
+			},
+			{
+				{Text: "🔄 重启服务器", CallbackData: fmt.Sprintf("confirm_reboot")},
+			},
+			{
+				{Text: "🔙 返回", CallbackData: fmt.Sprintf("server:%s", serverID)},
+			},
+		},
+	}
+
+	msg := "🔄 系统操作\n\n选择操作："
+	c.telegram.EditMessageWithKeyboard(query.Message.Chat.ID, int64(query.Message.MessageID), msg, keyboardMsg)
+	c.telegram.AnswerCallbackQuery(query.ID, "")
 }
 
 func (c *Command) executeConfirmRestart(query *CallbackQuery) {
