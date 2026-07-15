@@ -174,7 +174,7 @@ func (t *Telegram) EditMessage(chatID int64, messageID int64, text string) error
 }
 
 // EditMessageWithKeyboard 编辑消息（带键盘）
-func (t *Telegram) EditMessageWithKeyboard(chatID int64, messageID int64, text string, keyboard map[string]interface{}) error {
+func (t *Telegram) EditMessageWithKeyboard(chatID int64, messageID int64, text string, keyboard *InlineKeyboard) error {
 	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/editMessageText", t.BotToken)
 
 	data := url.Values{}
