@@ -731,6 +731,8 @@ func runDaemon() {
 
 func pollUpdates(ctx context.Context, telegram *Telegram, cmd *Command) {
 	offset := 0
+	startupTime := time.Now() // 记录启动时间，忽略旧回调
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -754,9 +756,18 @@ func pollUpdates(ctx context.Context, telegram *Telegram, cmd *Command) {
 		for _, update := range updates {
 			offset = update.UpdateID + 1
 
-			// 处理回调查询
+			// 处理回调查询 - 忽略启动前的旧回调（防止重启循环）
 			if update.CallbackQuery != nil && update.CallbackQuery.From != nil {
-				logInfo("回调: %s 来自 %d", update.CallbackQuery.Data, update.CallbackQuery.From.ID)
+				// 检查是否是重启相关的旧回调
+				data := update.CallbackQuery.Data
+				if strings.Contains(data, "confirm_reboot") || strings.Contains(data, "confirm_restart") {
+					elapsed := time.Since(startupTime)
+					if elapsed < 60*time.Second {
+						logWarn("忽略旧回调: %s (启动后 %v)", data, elapsed.Round(time.Second))
+						continue
+					}
+				}
+				logInfo("回调: %s 来自 %d", data, update.CallbackQuery.From.ID)
 				cmd.HandleCallbackQuery(update.CallbackQuery)
 				continue
 			}
