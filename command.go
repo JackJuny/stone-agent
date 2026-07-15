@@ -821,20 +821,31 @@ func (c *Command) executeConfirmRestart(query *CallbackQuery) {
 		return
 	}
 
+	// 检查冷却 - 防止重复执行
+	if cooling, remaining := c.actionMgr.CheckCooldown("restart_agent"); cooling {
+		c.telegram.AnswerCallbackQuery(query.ID, fmt.Sprintf("重启已执行，请等待 %d 秒", remaining))
+		return
+	}
+
+	// 记录执行时间（在执行前）
+	c.actionMgr.RecordExecution("restart_agent")
+
 	action := actions.NewRestartAgentAction()
 	c.actionMgr.Register(action)
 
-	c.actionMgr.RecordExecution("restart_agent")
-
 	if err := action.Execute(nil); err != nil {
 		c.telegram.AnswerCallbackQuery(query.ID, "执行失败")
-		c.telegram.EditMessage(query.Message.Chat.ID, int64(query.Message.MessageID), "❌ 重启Agent失败")
+		if query.Message != nil {
+			c.telegram.EditMessage(query.Message.Chat.ID, int64(query.Message.MessageID), "❌ 重启Agent失败")
+		}
 		c.db.InsertActionLog(query.From.ID, query.From.Username, "restart_agent", "stone", "", "", "failed", err.Error())
 		return
 	}
 
 	c.telegram.AnswerCallbackQuery(query.ID, "执行成功")
-	c.telegram.EditMessage(query.Message.Chat.ID, int64(query.Message.MessageID), "✅ 正在重启 Stone Agent...")
+	if query.Message != nil {
+		c.telegram.EditMessage(query.Message.Chat.ID, int64(query.Message.MessageID), "✅ 正在重启 Stone Agent...")
+	}
 	c.db.InsertActionLog(query.From.ID, query.From.Username, "restart_agent", "stone", "", "", "success", "")
 }
 
@@ -844,20 +855,31 @@ func (c *Command) executeConfirmReboot(query *CallbackQuery) {
 		return
 	}
 
+	// 检查冷却 - 防止重复执行
+	if cooling, remaining := c.actionMgr.CheckCooldown("reboot"); cooling {
+		c.telegram.AnswerCallbackQuery(query.ID, fmt.Sprintf("重启已执行，请等待 %d 秒", remaining))
+		return
+	}
+
+	// 记录执行时间（在执行前）
+	c.actionMgr.RecordExecution("reboot")
+
 	action := actions.NewRebootAction()
 	c.actionMgr.Register(action)
 
-	c.actionMgr.RecordExecution("reboot")
-
 	if err := action.Execute(nil); err != nil {
 		c.telegram.AnswerCallbackQuery(query.ID, "执行失败")
-		c.telegram.EditMessage(query.Message.Chat.ID, int64(query.Message.MessageID), "❌ 重启服务器失败")
+		if query.Message != nil {
+			c.telegram.EditMessage(query.Message.Chat.ID, int64(query.Message.MessageID), "❌ 重启服务器失败")
+		}
 		c.db.InsertActionLog(query.From.ID, query.From.Username, "reboot", c.config.Server.Name, "", "", "failed", err.Error())
 		return
 	}
 
 	c.telegram.AnswerCallbackQuery(query.ID, "执行成功")
-	c.telegram.EditMessage(query.Message.Chat.ID, int64(query.Message.MessageID), "🔄 正在重启服务器...")
+	if query.Message != nil {
+		c.telegram.EditMessage(query.Message.Chat.ID, int64(query.Message.MessageID), "🔄 正在重启服务器...")
+	}
 	c.db.InsertActionLog(query.From.ID, query.From.Username, "reboot", c.config.Server.Name, "", "", "success", "")
 }
 
